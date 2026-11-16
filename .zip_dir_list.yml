@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------
+# CS 6320 - Project 4: Depth Estimation using Stereo
+# Files packaged by zip_submission.py
+# ---------------------------------------------------------------------
+
+required_directories:
+  - proj4_code        # your code and the run notebook
+  - unit_tests        # the test suite
+  - semiglobalmatching
+  - data              # input images
+
+required_files:
+  - README.md
+
+optional_directories:
+  - additional_data
+
+optional_files: []
