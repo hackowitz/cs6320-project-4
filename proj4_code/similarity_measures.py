@@ -5,7 +5,11 @@ between two images
 import torch
 
 
-def ssd_similarity_measure(patch1: torch.Tensor, patch2: torch.Tensor) -> torch.Tensor:
+def ssd_similarity_measure(
+        patch1: torch.Tensor,
+        patch2: torch.Tensor,
+        **kwargs,
+) -> torch.Tensor:
     """
     Tests if two patches are similar by the SSD distance measure.
     
@@ -19,10 +23,13 @@ def ssd_similarity_measure(patch1: torch.Tensor, patch2: torch.Tensor) -> torch.
     -   ssd_value: a single ssd value of the patch
     """
     assert patch1.shape == patch2.shape
-    return ((patch2 - patch1)**2).sum()
+    return ((patch2 - patch1)**2).sum(**kwargs)
 
 
-def sad_similarity_measure(patch1: torch.Tensor, patch2: torch.Tensor) -> torch.Tensor:
+def sad_similarity_measure(
+        patch1: torch.Tensor,
+        patch2: torch.Tensor, **kwargs,
+) -> torch.Tensor:
     """
     Tests if two patches are similar by the SAD distance measure.
     
@@ -38,4 +45,4 @@ def sad_similarity_measure(patch1: torch.Tensor, patch2: torch.Tensor) -> torch.
     """
     
     assert patch1.shape == patch2.shape
-    return (patch2 - patch1).abs().sum()
+    return (patch2 - patch1).abs().sum(**kwargs)
