@@ -14,16 +14,19 @@ def get_rtl_disparities(
         sim_measure_function: Callable,
         maximum: int = 50,
 ):
-    """Scan leftward in `left` for the correspoiding point in `right`."""
+    """Scan rightward in `right` for the correspoiding point in `left`.
+
+    This was a first attemt while debugging the convention used in the project.
+    I think it would have been better to do it this way because scanning
+    right-to-left follows the underlying array ordering.
+    """
     # tacky, but lets us vectorize
     H, W, C = left.shape
     padding = torch.zeros(H, maximum - 1, C)
     left = torch.cat([left, padding], dim=1)
     return sim_measure_function(
         left
-            # .flip(1)
             .unfold(1, maximum, 1)        # for each search offset
-            # .flip(1)
             .unfold(0, block_size, 1)     # patch y
             .unfold(1, block_size, 1),    # patch x
         right
@@ -42,8 +45,13 @@ def get_ltr_disparities(
         sim_measure_function: Callable,
         maximum: int = 50,
 ):
-    """Scan leftward in `left` for the correspoiding point in `right`."""
-    # tacky, but lets us vectorize
+    """Scan leftward in `left` for the correspoiding point in `right`.
+
+    Because the underlying tensor data is ordered left-to-right, `unfold` must
+    perform a rightward scan. We hack it by mirroring the right image to scan
+    right-to-left, then mirroring it back. For the same reason, the padding
+    must also be applied to the LHS instead of the RHS.
+    """
     H, W, C = left.shape
     padding = torch.zeros(H, maximum - 1, C)
     right = torch.cat([padding, right], dim=1)
@@ -76,8 +84,8 @@ def calculate_disparity_map(
     """
     Calculate the disparity value at each pixel by searching a small 
     patch around a pixel from the left image in the right image
-    
-    Note: 
+
+    Note:
     1.  It is important for this project to follow the convention of search
       input in left image and search target in right image
     2.  While searching for disparity value for a patch, it may happen that there
@@ -86,15 +94,15 @@ def calculate_disparity_map(
       Please check the numpy's argmin and pytorch's argmin carefully.
       Example:
       -- disparity_val -- | -- similarity error --
-      -- 0                | 5 
+      -- 0                | 5
       -- 1                | 4
       -- 2                | 7
       -- 3                | 4
       -- 4                | 12
-    
+
       In this case we need the output to be 1 and not 3.
     3. The max_search_bound is defined from the patch center.
-    
+
     Args:
     -   left_img: image from the left stereo camera. Torch tensor of shape (H,W,C).
                 C will be >= 1.
@@ -116,7 +124,7 @@ def calculate_disparity_map(
         maximum=max_search_bound,
     ).min(dim=-1).indices
 
-    
+
 
 def calculate_cost_volume(
         left_img: torch.Tensor,
