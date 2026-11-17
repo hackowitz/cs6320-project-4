@@ -7,12 +7,71 @@ import numpy as np
 from typing import Callable, Tuple
 
 
+def get_rtl_disparities(
+        left: torch.Tensor,
+        right: torch.Tensor,
+        block_size: int,
+        sim_measure_function: Callable,
+        maximum: int = 50,
+):
+    """Scan leftward in `left` for the correspoiding point in `right`."""
+    # tacky, but lets us vectorize
+    H, W, C = left.shape
+    padding = torch.zeros(H, maximum - 1, C)
+    left = torch.cat([left, padding], dim=1)
+    return sim_measure_function(
+        left
+            # .flip(1)
+            .unfold(1, maximum, 1)        # for each search offset
+            # .flip(1)
+            .unfold(0, block_size, 1)     # patch y
+            .unfold(1, block_size, 1),    # patch x
+        right
+            [..., torch.newaxis]
+            .expand(-1, -1, -1, maximum)  # no search offsets on lhs
+            .unfold(0, block_size, 1)     # patch y
+            .unfold(1, block_size, 1),    # patch x
+        dim=(2, -2, -1),                  # W*H*C*O*X*Y -> W*H*O
+    )
+
+
+def get_ltr_disparities(
+        left: torch.Tensor,
+        right: torch.Tensor,
+        block_size: int,
+        sim_measure_function: Callable,
+        maximum: int = 50,
+):
+    """Scan leftward in `left` for the correspoiding point in `right`."""
+    # tacky, but lets us vectorize
+    H, W, C = left.shape
+    padding = torch.zeros(H, maximum - 1, C)
+    right = torch.cat([padding, right], dim=1)
+    return sim_measure_function(
+        right
+            .flip(1)
+            .unfold(1, maximum, 1)        # for each search offset
+            .flip(1)
+            .unfold(0, block_size, 1)     # patch y
+            .unfold(1, block_size, 1),    # patch x
+        left
+            [..., torch.newaxis]
+            .expand(-1, -1, -1, maximum)  # no search offsets on lhs
+            .unfold(0, block_size, 1)     # patch y
+            .unfold(1, block_size, 1),    # patch x
+        dim=(2, -2, -1),                  # W*H*C*O*X*Y -> W*H*O
+    )
+
+
+get_disparities = get_ltr_disparities  # convention for this project
+
+
 def calculate_disparity_map(
-    left_img: torch.Tensor,
-    right_img: torch.Tensor,
-    block_size: int,
-    sim_measure_function: Callable,
-    max_search_bound: int = 50,
+        left_img: torch.Tensor,
+        right_img: torch.Tensor,
+        block_size: int,
+        sim_measure_function: Callable,
+        max_search_bound: int = 50,
 ) -> torch.Tensor:
     """
     Calculate the disparity value at each pixel by searching a small 
@@ -26,12 +85,12 @@ def calculate_disparity_map(
       measure. In that case we need to pick the smallest disparity value.
       Please check the numpy's argmin and pytorch's argmin carefully.
       Example:
-      -- diparity_val -- | -- similarity error --
-      -- 0               | 5 
-      -- 1               | 4
-      -- 2               | 7
-      -- 3               | 4
-      -- 4               | 12
+      -- disparity_val -- | -- similarity error --
+      -- 0                | 5 
+      -- 1                | 4
+      -- 2                | 7
+      -- 3                | 4
+      -- 4                | 12
     
       In this case we need the output to be 1 and not 3.
     3. The max_search_bound is defined from the patch center.
@@ -50,74 +109,60 @@ def calculate_disparity_map(
     -   disparity_map: The map of disparity values at each pixel. 
                      Tensor of shape (H-2*(block_size//2),W-2*(block_size//2))
     """
-    assert left_img.shape == right_img.shape
+    return get_disparities(
+        left_img, right_img,
+        block_size=block_size,
+        sim_measure_function=sim_measure_function,
+        maximum=max_search_bound,
+    ).min(dim=-1).indices
 
-    # tacky, but lets us vectorize
-    H, W, C = left_img.shape
-    padding = torch.zeros(H, max_search_bound - 1, C)
-    left_img = torch.cat([left_img, padding], dim=1)
-
-    return sim_measure_function(
-        left_img
-            .unfold(1, max_search_bound, 1)        # for each search offset
-            .unfold(0, block_size, 1)              # patch y
-            .unfold(1, block_size, 1),             # patch x
-        right_img[..., torch.newaxis]
-            .expand(-1, -1, -1, max_search_bound)  # no search offsets on rhs
-            .unfold(0, block_size, 1)              # patch y
-            .unfold(1, block_size, 1),             # patch x
-        dim=(2, -2, -1),                           # W*H*C*O*X*Y -> W*H*O
-    ).min(dim=-1).indices                          # W*H*O -> W*H
     
 
-def calculate_cost_volume(left_img: torch.Tensor,
-                          right_img: torch.Tensor,
-                          max_disparity: int,
-                          sim_measure_function: Callable,
-                          block_size: int = 9):
-  """
-  Calculate the cost volume. Each pixel will have D=max_disparity cost values
-  associated with it. Basically for each pixel, we compute the cost of
-  different disparities and put them all into a tensor.
-
-  Note: 
-  1.  It is important for this project to follow the convention of search
+def calculate_cost_volume(
+        left_img: torch.Tensor,
+        right_img: torch.Tensor,
+        max_disparity: int,
+        sim_measure_function: Callable,
+        block_size: int = 9,
+):
+    """
+    Calculate the cost volume. Each pixel will have D=max_disparity cost values
+    associated with it. Basically for each pixel, we compute the cost of
+    different disparities and put them all into a tensor.
+    
+    Note: 
+    1.  It is important for this project to follow the convention of search
       input in left image and search target in right image
-  2.  If the shifted patch in the right image will go out of bounds, it is
+    2.  If the shifted patch in the right image will go out of bounds, it is
       good to set the default cost for that pixel and disparity to be something
       high(we recommend 255), so that when we consider costs, valid disparities will have a lower
       cost. 
-
-  Args:
-  -   left_img: image from the left stereo camera. Torch tensor of shape (H,W,C).
+    
+    Args:
+    -   left_img: image from the left stereo camera. Torch tensor of shape (H,W,C).
                 C will be 1 or 3.
-  -   right_img: image from the right stereo camera. Torch tensor of shape (H,W,C)
-  -   max_disparity:  represents the number of disparity values we will consider.
+    -   right_img: image from the right stereo camera. Torch tensor of shape (H,W,C)
+    -   max_disparity:  represents the number of disparity values we will consider.
                   0 to max_disparity-1
-  -   sim_measure_function: a function to measure similarity measure between
+    -   sim_measure_function: a function to measure similarity measure between
                   two tensors of the same shape; returns the error value
-  -   block_size: the size of the block to be used for searching between
+    -   block_size: the size of the block to be used for searching between
                   left and right image
-  Returns:
-  -   cost_volume: The cost volume tensor of shape (H,W,D). H,W are image
+    Returns:
+    -   cost_volume: The cost volume tensor of shape (H,W,D). H,W are image
                 dimensions, and D is max_disparity. cost_volume[x,y,d] 
                 represents the similarity or cost between a patch around left[x,y]  
                 and a patch shifted by disparity d in the right image. 
-  """
-  #placeholder
-  H = left_img.shape[0]
-  W = right_img.shape[1]
-  cost_volume = torch.zeros(H, W, max_disparity)
-  ############################################################################
-  # Student code begin
-  ############################################################################
+    """
+    disparity = get_disparities(
+        left_img, right_img,
+        maximum=max_disparity,
+        sim_measure_function=sim_measure_function,
+        block_size=block_size,
+    )
+    raise NotImplementedError('calculate_cost_volume not implemented')
 
-  raise NotImplementedError('calculate_cost_volume not implemented')
 
-  ############################################################################
-  # Student code end
-  ############################################################################
-  return cost_volume
 def confidence_from_cost_volume(cost_volume: torch.Tensor,
                                 method: str = 'peak_ratio',
                                 exclusion: int = 2,
