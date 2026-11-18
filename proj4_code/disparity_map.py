@@ -200,4 +200,5 @@ def _curvature_confidence(cost, default=255):
         .mul(torch.tensor([1, -2, 1])) \
         .sum(dim=-1) \
         .nan_to_num(0) \
-        .gather(-1, cost[..., 1:-1].min(dim=-1, keepdim=True).indices)
+        .gather(-1, cost[..., 1:-1].min(dim=-1, keepdim=True).indices) \
+        .squeeze(dim=-1)
