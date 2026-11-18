@@ -184,7 +184,13 @@ def _peak_ratio_confidence(cost, default=255, exclusion=2):
     """Take the lowest cost, then the lowest cost that is at least `exclusion`
     disparities away from it, and divide the second by the first.
     """
-    return torch.ones(cost.shape[:2])
+    ranks = cost.where(cost!=default, torch.nan).argsort()
+    best = ranks[..., :1]
+    second_best = ranks.gather(
+        -1,
+        ranks.sub(best).abs().gt(exclusion).max(dim=-1, keepdim=True).indices,
+    )
+    return cost.gather(-1, second_best).div(cost.gather(-1, best)).squeeze(dim=-1)
 
 
 def _curvature_confidence(cost, default=255):
