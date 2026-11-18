@@ -137,15 +137,15 @@ def calculate_cost_volume(
     Calculate the cost volume. Each pixel will have D=max_disparity cost values
     associated with it. Basically for each pixel, we compute the cost of
     different disparities and put them all into a tensor.
-    
-    Note: 
+
+    Note:
     1.  It is important for this project to follow the convention of search
       input in left image and search target in right image
     2.  If the shifted patch in the right image will go out of bounds, it is
       good to set the default cost for that pixel and disparity to be something
       high(we recommend 255), so that when we consider costs, valid disparities will have a lower
-      cost. 
-    
+      cost.
+
     Args:
     -   left_img: image from the left stereo camera. Torch tensor of shape (H,W,C).
                 C will be 1 or 3.
@@ -162,30 +162,30 @@ def calculate_cost_volume(
                 represents the similarity or cost between a patch around left[x,y]  
                 and a patch shifted by disparity d in the right image. 
     """
-    disparity = get_disparities(
+    return get_disparities(
         left_img, right_img,
-        maximum=max_disparity,
+        max_disparity=max_disparity,
         sim_measure_function=sim_measure_function,
         block_size=block_size,
     )
-    raise NotImplementedError('calculate_cost_volume not implemented')
 
 
-def confidence_from_cost_volume(cost_volume: torch.Tensor,
-                                method: str = 'peak_ratio',
-                                exclusion: int = 2,
-                                invalid_cost: float = 255.0) -> torch.Tensor:
-  """
-  Score how much we should trust the disparity chosen at each pixel.
+def confidence_from_cost_volume(
+        cost_volume: torch.Tensor,
+        method: str = 'peak_ratio',
+        exclusion: int = 2,
+        invalid_cost: float = 255.0,
+) -> torch.Tensor:
+    """Score how much we should trust the disparity chosen at each pixel.
 
-  calculate_disparity_map() keeps only the winning disparity and throws the rest of
-  the error profile away. The cost volume still has all of it, and the shape of that
-  profile tells us whether the winner was a clear winner or a coin flip. That score
-  is what this function returns.
+    calculate_disparity_map() keeps only the winning disparity and throws the rest of
+    the error profile away. The cost volume still has all of it, and the shape of that
+    profile tells us whether the winner was a clear winner or a coin flip. That score
+    is what this function returns.
 
-  Two ways to measure it:
+    Two ways to measure it:
 
-  'peak_ratio'
+    'peak_ratio'
       Take the lowest cost, then the lowest cost that is at least `exclusion`
       disparities away from it, and divide the second by the first. If the winner is
       far better than anything else, the ratio is large. If something just as good
@@ -193,41 +193,30 @@ def confidence_from_cost_volume(cost_volume: torch.Tensor,
       disparities next to the winner matters: the points either side of a minimum
       are always low, and without the gap every pixel would score about 1.
 
-  'curvature'
+    'curvature'
       How sharply the cost rises on either side of the winner:
       cost[d-1] + cost[d+1] - 2 * cost[d]. A narrow, deep notch gives a big number,
       a shallow dip gives a small one. This only looks at the three values around
       the minimum, so unlike peak ratio it cannot see a rival minimum further away.
 
-  Entries equal to `invalid_cost` are disparities that were never evaluated, because
-  the shifted patch would have fallen off the left edge of the image. They are not
-  real costs and must be left out of both calculations.
+    Entries equal to `invalid_cost` are disparities that were never evaluated, because
+    the shifted patch would have fallen off the left edge of the image. They are not
+    real costs and must be left out of both calculations.
 
-  Return 0 for a pixel when there is no sensible answer: fewer than three disparities
-  were evaluated, or the winner sits at the edge of the evaluated range, so one of
-  the two neighbours that curvature needs does not exist.
+    Return 0 for a pixel when there is no sensible answer: fewer than three disparities
+    were evaluated, or the winner sits at the edge of the evaluated range, so one of
+    the two neighbours that curvature needs does not exist.
 
-  Args:
-  -   cost_volume: tensor of shape (H, W, D) from calculate_cost_volume()
-  -   method: 'peak_ratio' or 'curvature'
-  -   exclusion: how many disparities either side of the winner to skip when
+    Args:
+    -   cost_volume: tensor of shape (H, W, D) from calculate_cost_volume()
+    -   method: 'peak_ratio' or 'curvature'
+    -   exclusion: how many disparities either side of the winner to skip when
                  looking for the runner-up (peak_ratio only)
-  -   invalid_cost: the filler value calculate_cost_volume() stores for disparities
+    -   invalid_cost: the filler value calculate_cost_volume() stores for disparities
                     it could not evaluate
-  Returns:
-  -   confidence: tensor of shape (H, W). Larger means more trustworthy. The two
+    Returns:
+    -   confidence: tensor of shape (H, W). Larger means more trustworthy. The two
                   methods are on different scales, so compare a map against itself,
                   not against the other method.
-  """
-  #placeholder
-  confidence = torch.zeros(cost_volume.shape[0], cost_volume.shape[1])
-  ############################################################################
-  # Student code begin
-  ############################################################################
-
-  raise NotImplementedError('confidence_from_cost_volume not implemented')
-
-  ############################################################################
-  # Student code end
-  ############################################################################
-  return confidence
+    """
+    raise NotImplementedError('confidence_from_cost_volume not implemented')
