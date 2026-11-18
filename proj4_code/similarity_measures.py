@@ -20,7 +20,7 @@ def ssd_similarity_measure(
         **kwargs,
 ) -> torch.Tensor:
     """Test if two patches are similar by the SSD distance measure.
-    
+
     SSD measure is sum of squared difference of pixel values in two patches.
     It is a good measure when the system has Gaussian noise.
 
@@ -49,5 +49,5 @@ def sad_similarity_measure(
     -   patch2: the other patch to compare (tensor of the same shape as patch1)
     Returns:
     -   sad_value: the scalar sad value of the patch
-    """    
+    """
     return (patch2 - patch1).abs().sum(**kwargs)

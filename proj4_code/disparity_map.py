@@ -166,9 +166,32 @@ def confidence_from_cost_volume(
                  looking for the runner-up (peak_ratio only)
     -   invalid_cost: the filler value calculate_cost_volume() stores for disparities
                     it could not evaluate
+
     Returns:
     -   confidence: tensor of shape (H, W). Larger means more trustworthy. The two
                   methods are on different scales, so compare a map against itself,
                   not against the other method.
     """
-    raise NotImplementedError('confidence_from_cost_volume not implemented')
+    # I don't want to write one function that implements two completely different algorithms.
+    if method == 'peak_ratio':
+        return _peak_ratio_confidence(cost_volume, invalid_cost, exclusion)
+    if method == 'curvature':
+        return _curvature_confidence(cost_volume, invalid_cost)
+    raise ValueError(method)
+
+
+def _peak_ratio_confidence(cost, default=255, exclusion=2):
+    """Take the lowest cost, then the lowest cost that is at least `exclusion`
+    disparities away from it, and divide the second by the first.
+    """
+    return torch.ones(cost.shape[:2])
+
+
+def _curvature_confidence(cost, default=255):
+    return cost \
+        .where(cost!=default, torch.nan) \
+        .unfold(-1, 3, 1) \
+        .mul(torch.tensor([1, -2, 1])) \
+        .sum(dim=-1) \
+        .nan_to_num(0) \
+        .gather(-1, cost[..., 1:-1].min(dim=-1, keepdim=True).indices)
