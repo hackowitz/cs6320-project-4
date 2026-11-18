@@ -7,73 +7,6 @@ import numpy as np
 from typing import Callable, Tuple
 
 
-def get_rtl_disparities(
-        left: torch.Tensor,
-        right: torch.Tensor,
-        block_size: int,
-        sim_measure_function: Callable,
-        maximum: int = 50,
-):
-    """Scan rightward in `right` for the correspoiding point in `left`.
-
-    This was a first attemt while debugging the convention used in the project.
-    I think it would have been better to do it this way because scanning
-    right-to-left follows the underlying array ordering.
-    """
-    # tacky, but lets us vectorize
-    H, W, C = left.shape
-    padding = torch.zeros(H, maximum - 1, C)
-    left = torch.cat([left, padding], dim=1)
-    return sim_measure_function(
-        left
-            .unfold(1, maximum, 1)        # for each search offset
-            .unfold(0, block_size, 1)     # patch y
-            .unfold(1, block_size, 1),    # patch x
-        right
-            [..., torch.newaxis]
-            .expand(-1, -1, -1, maximum)  # no search offsets on lhs
-            .unfold(0, block_size, 1)     # patch y
-            .unfold(1, block_size, 1),    # patch x
-        dim=(2, -2, -1),                  # W*H*C*O*X*Y -> W*H*O
-    )
-
-
-def get_ltr_disparities(
-        left: torch.Tensor,
-        right: torch.Tensor,
-        block_size: int,
-        sim_measure_function: Callable,
-        maximum: int = 50,
-):
-    """Scan leftward in `left` for the correspoiding point in `right`.
-
-    Because the underlying tensor data is ordered left-to-right, `unfold` must
-    perform a rightward scan. We hack it by mirroring the right image to scan
-    right-to-left, then mirroring it back. For the same reason, the padding
-    must also be applied to the LHS instead of the RHS.
-    """
-    H, W, C = left.shape
-    padding = torch.zeros(H, maximum - 1, C)
-    right = torch.cat([padding, right], dim=1)
-    return sim_measure_function(
-        right
-            .flip(1)
-            .unfold(1, maximum, 1)        # for each search offset
-            .flip(1)
-            .unfold(0, block_size, 1)     # patch y
-            .unfold(1, block_size, 1),    # patch x
-        left
-            [..., torch.newaxis]
-            .expand(-1, -1, -1, maximum)  # no search offsets on lhs
-            .unfold(0, block_size, 1)     # patch y
-            .unfold(1, block_size, 1),    # patch x
-        dim=(2, -2, -1),                  # W*H*C*O*X*Y -> W*H*O
-    )
-
-
-get_disparities = get_ltr_disparities  # convention for this project
-
-
 def calculate_disparity_map(
         left_img: torch.Tensor,
         right_img: torch.Tensor,
@@ -117,13 +50,12 @@ def calculate_disparity_map(
     -   disparity_map: The map of disparity values at each pixel. 
                      Tensor of shape (H-2*(block_size//2),W-2*(block_size//2))
     """
-    return get_disparities(
+    return calculate_cost_volume(
         left_img, right_img,
         block_size=block_size,
         sim_measure_function=sim_measure_function,
-        maximum=max_search_bound,
+        max_disparity=max_search_bound,
     ).min(dim=-1).indices
-
 
 
 def calculate_cost_volume(
@@ -158,15 +90,35 @@ def calculate_cost_volume(
                   left and right image
     Returns:
     -   cost_volume: The cost volume tensor of shape (H,W,D). H,W are image
-                dimensions, and D is max_disparity. cost_volume[x,y,d] 
-                represents the similarity or cost between a patch around left[x,y]  
-                and a patch shifted by disparity d in the right image. 
+                dimensions, and D is max_disparity. cost_volume[x,y,d]
+                represents the similarity or cost between a patch around left[x,y]
+                and a patch shifted by disparity d in the right image.
+
+    Notes
+    -----
+    Because the underlying tensor data is ordered left-to-right, `unfold` must
+    perform a rightward scan. We hack it by mirroring the right image to scan
+    right-to-left, then mirroring it back. For the same reason, the padding
+    must also be applied to the LHS instead of the RHS. I think it would have
+    been better to use the other image as the datum so the can moves
+    right-to-left following the underlying array ordering.
     """
-    return get_disparities(
-        left_img, right_img,
-        max_disparity=max_disparity,
-        sim_measure_function=sim_measure_function,
-        block_size=block_size,
+    H, W, C = left_img.shape
+    padding = torch.zeros(H, max_disparity - 1, C)
+    right_img = torch.cat([padding, right_img], dim=1)
+    return sim_measure_function(
+        right_img
+            .flip(1)
+            .unfold(1, max_disparity, 1)        # for each search offset
+            .flip(1)
+            .unfold(0, block_size, 1)           # patch y
+            .unfold(1, block_size, 1),          # patch x
+        left_img
+            [..., torch.newaxis]
+            .expand(-1, -1, -1, max_disparity)  # no search offsets on lhs
+            .unfold(0, block_size, 1)           # patch y
+            .unfold(1, block_size, 1),          # patch x
+        dim=(2, -2, -1),                        # W*H*C*O*X*Y -> W*H*O
     )
 
 
